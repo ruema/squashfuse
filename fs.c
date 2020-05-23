@@ -53,13 +53,25 @@ sqfs_compression_type sqfs_compression(sqfs *fs) {
 	return fs->sb.compression;
 }
 
-sqfs_err sqfs_init(sqfs *fs, sqfs_fd_t fd, size_t offset) {
+int luks_open_fd(void* luks_file, int file_descriptor, off_t offset);
+int luks_unlock(void* luks_file, const char *password, size_t passwordLen);
+
+sqfs_err sqfs_init(sqfs *fs, sqfs_fd_t fd, size_t offset, const char *key) {
 	sqfs_err err = SQFS_OK;
 	memset(fs, 0, sizeof(*fs));
 	
 	fs->fd = fd;
 	fs->offset = offset;
-	if (sqfs_pread(fd, &fs->sb, sizeof(fs->sb), fs->offset) != sizeof(fs->sb))
+	fs->luks = NULL;
+	if(key) {
+		fs->luks = malloc(2048);
+		if(luks_open_fd(fs->luks, fd, offset)<0)
+			return SQFS_BADFORMAT;
+		if(luks_unlock(fs->luks, key, strlen(key))<0)
+			return SQFS_BADVERSION;
+	}
+
+	if (sqfs_pread(fs, &fs->sb, sizeof(fs->sb), 0) != sizeof(fs->sb))
 		return SQFS_BADFORMAT;
 	sqfs_swapin_super_block(&fs->sb);
 	
@@ -75,12 +87,12 @@ sqfs_err sqfs_init(sqfs *fs, sqfs_fd_t fd, size_t offset) {
 	if (!(fs->decompressor = sqfs_decompressor_get(fs->sb.compression)))
 		return SQFS_BADCOMP;
 	
-	err = sqfs_table_init(&fs->id_table, fd, fs->sb.id_table_start + fs->offset,
+	err = sqfs_table_init(&fs->id_table, fs, fs->sb.id_table_start,
 		sizeof(uint32_t), fs->sb.no_ids);
-	err |= sqfs_table_init(&fs->frag_table, fd, fs->sb.fragment_table_start + fs->offset,
+	err |= sqfs_table_init(&fs->frag_table, fs, fs->sb.fragment_table_start,
 		sizeof(struct squashfs_fragment_entry), fs->sb.fragments);
 	if (sqfs_export_ok(fs)) {
-		err |= sqfs_table_init(&fs->export_table, fd, fs->sb.lookup_table_start + fs->offset,
+		err |= sqfs_table_init(&fs->export_table, fs, fs->sb.lookup_table_start,
 			sizeof(uint64_t), fs->sb.inodes);
 	}
 	err |= sqfs_xattr_init(fs);
@@ -127,7 +139,7 @@ sqfs_err sqfs_block_read(sqfs *fs, sqfs_off_t pos, bool compressed,
 	if (!((*block)->data = malloc(size)))
 		goto error;
 	
-	if (sqfs_pread(fs->fd, (*block)->data, size, pos + fs->offset) != size)
+	if (sqfs_pread(fs, (*block)->data, size, pos) != size)
 		goto error;
 
 	if (compressed) {
@@ -164,7 +176,7 @@ sqfs_err sqfs_md_block_read(sqfs *fs, sqfs_off_t pos, size_t *data_size,
 	
 	*data_size = 0;
 	
-	if (sqfs_pread(fs->fd, &hdr, sizeof(hdr), pos + fs->offset) != sizeof(hdr))
+	if (sqfs_pread(fs, &hdr, sizeof(hdr), pos) != sizeof(hdr))
 		return SQFS_ERR;
 	pos += sizeof(hdr);
 	*data_size += sizeof(hdr);
@@ -188,14 +200,12 @@ sqfs_err sqfs_data_block_read(sqfs *fs, sqfs_off_t pos, uint32_t hdr,
 }
 
 sqfs_err sqfs_md_cache(sqfs *fs, sqfs_off_t *pos, sqfs_block **block) {
-	sqfs_block_cache_entry *entry = sqfs_cache_get(
-		&fs->md_cache, *pos);
+	sqfs_block_cache_entry *entry = sqfs_cache_get(&fs->md_cache, *pos);
 	if (!entry) {
 		sqfs_err err = SQFS_OK;
 		entry = sqfs_cache_add(&fs->md_cache, *pos);
 		/* fprintf(stderr, "MD BLOCK: %12llx\n", (long long)*pos); */
-		err = sqfs_md_block_read(fs, *pos,
-			&entry->data_size, &entry->block);
+		err = sqfs_md_block_read(fs, *pos, &entry->data_size, &entry->block);
 		if (err)
 			return err;
 	}
@@ -210,8 +220,7 @@ sqfs_err sqfs_data_cache(sqfs *fs, sqfs_cache *cache, sqfs_off_t pos,
 	if (!entry) {
 		sqfs_err err = SQFS_OK;
 		entry = sqfs_cache_add(cache, pos);
-		err = sqfs_data_block_read(fs, pos, hdr,
-			&entry->block);
+		err = sqfs_data_block_read(fs, pos, hdr, &entry->block);
 		if (err)
 			return err;
 	}
@@ -338,6 +347,7 @@ sqfs_err sqfs_inode_get(sqfs *fs, sqfs_inode *inode, sqfs_inode_id id) {
 	sqfs_err err = SQFS_OK;
 	
 	memset(inode, 0, sizeof(*inode));
+	inode->fs = fs;
 	inode->xattr = SQUASHFS_INVALID_XATTR;
 	
 	sqfs_md_cursor_inode(&cur, id, fs->sb.inode_table_start);

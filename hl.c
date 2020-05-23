@@ -45,24 +45,29 @@ static sqfs_err sqfs_hl_lookup(sqfs **fs, sqfs_inode *inode,
 	bool found;
 	
 	sqfs_hl *hl = fuse_get_context()->private_data;
-	*fs = &hl->fs;
-	if (inode)
-		*inode = hl->root; /* copy */
-
-	if (path) {
-		sqfs_err err = sqfs_lookup_path(*fs, inode, path, &found);
-		if (err)
-			return err;
-		if (!found)
-			return SQFS_ERR;
+	while(hl->fs.fd) {
+		*fs = &hl->fs;
+		if (inode)
+			*inode = hl->root; /* copy */
+		if (path) {
+			sqfs_err err = sqfs_lookup_path(*fs, inode, path, &found);
+			if (err)
+				return err;
+			if (found)
+				return SQFS_OK;
+		}
+		hl++;
 	}
-	return SQFS_OK;
+	return SQFS_ERR;
 }
 
 
 static void sqfs_hl_op_destroy(void *user_data) {
 	sqfs_hl *hl = (sqfs_hl*)user_data;
-	sqfs_destroy(&hl->fs);
+	while(hl->fs.fd) {
+		sqfs_destroy(&hl->fs);
+		hl++;
+	}
 	free(hl);
 }
 
@@ -121,8 +126,8 @@ static int sqfs_hl_op_readdir(const char *path, void *buf,
 	sqfs_dir_entry entry;
 	struct stat st;
 	
-	sqfs_hl_lookup(&fs, NULL, NULL);
 	inode = (sqfs_inode*)(intptr_t)fi->fh;
+	fs = inode->fs;
 		
 	if (sqfs_dir_open(fs, inode, &dir, offset))
 		return -EINVAL;
@@ -179,9 +184,8 @@ static int sqfs_hl_op_release(const char *path, struct fuse_file_info *fi) {
 static int sqfs_hl_op_read(const char *path, char *buf, size_t size,
 		off_t off, struct fuse_file_info *fi) {
 	sqfs *fs;
-	sqfs_hl_lookup(&fs, NULL, NULL);
 	sqfs_inode *inode = (sqfs_inode*)(intptr_t)fi->fh;
-
+	fs = inode->fs;
 	off_t osize = size;
 	if (sqfs_read_range(fs, inode, off, &osize, buf))
 		return -EIO;
@@ -243,25 +247,16 @@ static int sqfs_hl_op_getxattr(const char *path, const char *name,
 	return real;
 }
 
-static sqfs_hl *sqfs_hl_open(const char *path, size_t offset) {
-	sqfs_hl *hl;
-	
-	hl = malloc(sizeof(*hl));
-	if (!hl) {
-		perror("Can't allocate memory");
-	} else {
-		memset(hl, 0, sizeof(*hl));
-		if (sqfs_open_image(&hl->fs, path, offset) == SQFS_OK) {
-			if (sqfs_inode_get(&hl->fs, &hl->root, sqfs_inode_root(&hl->fs)))
-				fprintf(stderr, "Can't find the root of this filesystem!\n");
-			else
-				return hl;
-			sqfs_destroy(&hl->fs);
-		}
-		
-		free(hl);
+int sqfs_hl_open(sqfs_hl *hl, const char *path, size_t offset, const char *key) {
+	memset(hl, 0, sizeof(*hl));
+	if (sqfs_open_image(&hl->fs, path, offset, key) == SQFS_OK) {
+		if (sqfs_inode_get(&hl->fs, &hl->root, sqfs_inode_root(&hl->fs)))
+			fprintf(stderr, "Can't find the root of this filesystem!\n");
+		else
+			return 0;
+		sqfs_destroy(&hl->fs);
 	}
-	return NULL;
+	return -1;
 }
 
 int main(int argc, char *argv[]) {
@@ -272,12 +267,13 @@ int main(int argc, char *argv[]) {
 	
 	struct fuse_opt fuse_opts[] = {
 		{"offset=%u", offsetof(sqfs_opts, offset), 0},
+		{"key=%s", offsetof(sqfs_opts, key), 0},
 		FUSE_OPT_END
 	};
 
 	struct fuse_operations sqfs_hl_ops;
 	memset(&sqfs_hl_ops, 0, sizeof(sqfs_hl_ops));
-	sqfs_hl_ops.init			= sqfs_hl_op_init;
+	sqfs_hl_ops.init		= sqfs_hl_op_init;
 	sqfs_hl_ops.destroy		= sqfs_hl_op_destroy;
 	sqfs_hl_ops.getattr		= sqfs_hl_op_getattr;
 	sqfs_hl_ops.opendir		= sqfs_hl_op_opendir;
@@ -299,17 +295,40 @@ int main(int argc, char *argv[]) {
 	opts.image = NULL;
 	opts.mountpoint = 0;
 	opts.offset = 0;
+	opts.key = NULL;
 	if (fuse_opt_parse(&args, &opts, fuse_opts, sqfs_opt_proc) == -1)
 		sqfs_usage(argv[0], true);
 	if (!opts.image)
 		sqfs_usage(argv[0], true);
-	
-	hl = sqfs_hl_open(opts.image, opts.offset);
-	if (!hl)
+
+	// count images;
+	int cnt_images = 1;
+	char *image = (char*)opts.image;
+	while(*image) {
+		if(*image == ':') {
+			cnt_images++;
+			*image = 0;
+		}
+		image++;
+	}
+	sqfs_hl *hls;
+	hls = malloc(sizeof(sqfs_hl) * (1 + cnt_images));
+	if (!hls) {
+		perror("Can't allocate memory");
 		return -1;
-	
+	}
+	image = (char*)opts.image;
+	hl = hls;
+	while(cnt_images-- > 0) {
+		if(sqfs_hl_open(hl, image, opts.offset, opts.key)<0)
+			return -1;
+		hl += 1;
+		while(*image) image++;
+		image++;
+	}
+	hl->fs.fd = 0;
 	fuse_opt_add_arg(&args, "-s"); /* single threaded */
-	ret = fuse_main(args.argc, args.argv, &sqfs_hl_ops, hl);
+	ret = fuse_main(args.argc, args.argv, &sqfs_hl_ops, hls);
 	fuse_opt_free_args(&args);
 	return ret;
 }

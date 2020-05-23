@@ -377,7 +377,7 @@ static sqfs_ll *sqfs_ll_open(const char *path, size_t offset) {
 	} else {
 		memset(ll, 0, sizeof(*ll));
 		ll->fs.offset = offset;
-		if (sqfs_open_image(&ll->fs, path, offset) == SQFS_OK) {
+		if (sqfs_open_image(&ll->fs, path, offset, NULL) == SQFS_OK) {
 			if (sqfs_ll_init(ll))
 				fprintf(stderr, "Can't initialize this filesystem!\n");
 			else

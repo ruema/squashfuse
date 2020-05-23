@@ -37,6 +37,7 @@ struct sqfs {
 	sqfs_fd_t fd;
 	size_t offset;
 	struct squashfs_super_block sb;
+	void *luks;
 	sqfs_table id_table;
 	sqfs_table frag_table;
 	sqfs_table export_table;
@@ -52,6 +53,7 @@ struct sqfs {
 
 typedef uint32_t sqfs_xattr_idx;
 struct sqfs_inode {
+	struct sqfs *fs;
 	struct squashfs_base_inode base;
 	int nlink;
 	sqfs_xattr_idx xattr;
@@ -86,7 +88,7 @@ void sqfs_version_supported(int *min_major, int *min_minor, int *max_major,
 size_t sqfs_divceil(uint64_t total, size_t group);
 
 
-sqfs_err sqfs_init(sqfs *fs, sqfs_fd_t fd, size_t offset);
+sqfs_err sqfs_init(sqfs *fs, sqfs_fd_t fd, size_t offset, const char *key);
 void sqfs_destroy(sqfs *fs);
 
 /* Ok to call these even on incompletely constructed filesystems */

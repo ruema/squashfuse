@@ -26,12 +26,14 @@
 #define SQFS_STD_H
 
 #include "common.h"
+#include "fs.h"
 
 /* Non-standard functions that we need */
 
 dev_t sqfs_makedev(int maj, int min);
 
-ssize_t sqfs_pread(sqfs_fd_t fd, void *buf, size_t count, sqfs_off_t off);
+ssize_t sqfs_pread_raw(sqfs_fd_t fd, void *buf, size_t count, sqfs_off_t off);
+ssize_t sqfs_pread(sqfs *fd, void *buf, size_t count, sqfs_off_t off);
 
 int sqfs_enoattr();
 
