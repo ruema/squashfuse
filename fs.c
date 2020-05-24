@@ -53,8 +53,10 @@ sqfs_compression_type sqfs_compression(sqfs *fs) {
 	return fs->sb.compression;
 }
 
+#ifdef MINILUKS
 int luks_open_fd(void* luks_file, int file_descriptor, off_t offset);
 int luks_unlock(void* luks_file, const char *password, size_t passwordLen);
+#endif
 
 sqfs_err sqfs_init(sqfs *fs, sqfs_fd_t fd, size_t offset, const char *key) {
 	sqfs_err err = SQFS_OK;
@@ -64,11 +66,15 @@ sqfs_err sqfs_init(sqfs *fs, sqfs_fd_t fd, size_t offset, const char *key) {
 	fs->offset = offset;
 	fs->luks = NULL;
 	if(key) {
+#ifdef MINILUKS
 		fs->luks = malloc(2048);
 		if(luks_open_fd(fs->luks, fd, offset)<0)
 			return SQFS_BADFORMAT;
 		if(luks_unlock(fs->luks, key, strlen(key))<0)
 			return SQFS_BADVERSION;
+#else
+		printf("encryption not supported");
+#endif
 	}
 
 	if (sqfs_pread(fs, &fs->sb, sizeof(fs->sb), 0) != sizeof(fs->sb))
