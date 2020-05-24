@@ -25,6 +25,7 @@
 #include "squashfuse.h"
 #include "fuseprivate.h"
 #include "hashset.h"
+#include "stat.h"
 #include "nonstd.h"
 
 #include <errno.h>
@@ -65,11 +66,19 @@ static void sqfs_hl_op_destroy(void *user_data) {
 	free(user_data);
 }
 
-static void *sqfs_hl_op_init(struct fuse_conn_info *conn) {
+static void *sqfs_hl_op_init(struct fuse_conn_info *conn
+#if FUSE_USE_VERSION >= 30
+			     ,struct fuse_config *cfg
+#endif
+			     ) {
 	return fuse_get_context()->private_data;
 }
 
-static int sqfs_hl_op_getattr(const char *path, struct stat *st) {
+static int sqfs_hl_op_getattr(const char *path, struct stat *st
+#if FUSE_USE_VERSION >= 30
+			      , struct fuse_file_info *fi
+#endif
+			      ) {
 	sqfs_inode inode;
 	if (sqfs_hl_lookup(&inode, path))
 		return -ENOENT;
@@ -131,7 +140,11 @@ static int sqfs_hl_op_releasedir(const char *path,
 }
 
 static int sqfs_hl_op_readdir(const char *path, void *buf,
-		fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
+		fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi
+#if FUSE_USE_VERSION >= 30
+	,enum fuse_readdir_flags flags
+#endif
+	) {
 	sqfs_err err;
 	sqfs_inode *inode;
 	sqfs_dir dir;
@@ -152,8 +165,13 @@ static int sqfs_hl_op_readdir(const char *path, void *buf,
 		while (sqfs_dir_next(fs, &dir, &entry, &err)) {
 			sqfs_off_t doff = sqfs_dentry_next_offset(&entry);
 			st.st_mode = sqfs_dentry_mode(&entry);
-			if (filler(buf, sqfs_dentry_name(&entry), &st, doff))
+			if (filler(buf, sqfs_dentry_name(&entry), &st, doff
+#if FUSE_USE_VERSION >= 30
+			   , 0
+#endif
+			   )) {
 				return 0;
+			}
 		}
 		if (err)
 			return -EIO;
@@ -183,7 +201,11 @@ static int sqfs_hl_op_readdir(const char *path, void *buf,
 				goto finish;
 			  }
 			  current_offset = new_offset;*/
-  			  if(filler(buf, name, &st, 0))
+  			  if(filler(buf, name, &st, 0
+#if FUSE_USE_VERSION >= 30
+			   , 0
+#endif
+  			  	))
 				goto finish;
 			}
 		}
@@ -294,6 +316,11 @@ static int sqfs_hl_op_getxattr(const char *path, const char *name,
 	return real;
 }
 
+static int sqfs_hl_op_statfs(const char *path, struct statvfs *st) {
+	sqfs_hl *hl = fuse_get_context()->private_data;
+	return sqfs_statfs(&hl->fs, st);
+}
+
 int sqfs_hl_open(sqfs_hl *hl, const char *path, size_t offset, const char *key) {
 	memset(hl, 0, sizeof(*hl));
 	if (sqfs_open_image(&hl->fs, path, offset, key) == SQFS_OK) {
@@ -313,7 +340,7 @@ int main(int argc, char *argv[]) {
 	int ret;
 	
 	struct fuse_opt fuse_opts[] = {
-		{"offset=%u", offsetof(sqfs_opts, offset), 0},
+		{"offset=%zu", offsetof(sqfs_opts, offset), 0},
 		{"key=%s", offsetof(sqfs_opts, key), 0},
 		FUSE_OPT_END
 	};
@@ -333,6 +360,7 @@ int main(int argc, char *argv[]) {
 	sqfs_hl_ops.readlink	= sqfs_hl_op_readlink;
 	sqfs_hl_ops.listxattr	= sqfs_hl_op_listxattr;
 	sqfs_hl_ops.getxattr	= sqfs_hl_op_getxattr;
+	sqfs_hl_ops.statfs    = sqfs_hl_op_statfs;
   
 	args.argc = argc;
 	args.argv = argv;

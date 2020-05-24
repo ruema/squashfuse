@@ -205,9 +205,12 @@ sqfs_err sqfs_md_cache(sqfs *fs, sqfs_off_t *pos, sqfs_block **block) {
 		sqfs_err err = SQFS_OK;
 		entry = sqfs_cache_add(&fs->md_cache, *pos);
 		/* fprintf(stderr, "MD BLOCK: %12llx\n", (long long)*pos); */
-		err = sqfs_md_block_read(fs, *pos, &entry->data_size, &entry->block);
-		if (err)
+		err = sqfs_md_block_read(fs, *pos,
+			&entry->data_size, &entry->block);
+		if (err) {
+			sqfs_cache_invalidate(&fs->md_cache, *pos);
 			return err;
+		}
 	}
 	*block = entry->block;
 	*pos += entry->data_size;
@@ -220,9 +223,12 @@ sqfs_err sqfs_data_cache(sqfs *fs, sqfs_cache *cache, sqfs_off_t pos,
 	if (!entry) {
 		sqfs_err err = SQFS_OK;
 		entry = sqfs_cache_add(cache, pos);
-		err = sqfs_data_block_read(fs, pos, hdr, &entry->block);
-		if (err)
+		err = sqfs_data_block_read(fs, pos, hdr,
+			&entry->block);
+		if (err) {
+			sqfs_cache_invalidate(cache, pos);
 			return err;
+		}
 	}
 	*block = entry->block;
 	return SQFS_OK;

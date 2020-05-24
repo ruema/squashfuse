@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 Dave Vasilevsky <dave@vasilevsky.ca>
+ * Copyright (c) 2019 Dave Vasilevsky <dave@vasilevsky.ca>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -22,23 +22,14 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "config.h"
+#ifndef SQFS_STAT_H
+#define SQFS_STAT_H
 
-#define SQFEATURE NONSTD_DAEMON_DEF
-#include "nonstd-internal.h"
+#include "squashfuse.h"
 
-#include <unistd.h>
-#if FUSE_USE_VERSION >= 30
-#include <fuse3/fuse_lowlevel.h>
-#else
-#include <fuse_lowlevel.h>
+#include <sys/stat.h>
+
+/* Fill in a stat structure. Does not set st_ino */
+sqfs_err sqfs_stat(sqfs *fs, sqfs_inode *inode, struct stat *st);
+
 #endif
-
-int sqfs_ll_daemonize(int fg) {
-	#if HAVE_DECL_FUSE_DAEMONIZE
-		return fuse_daemonize(fg);
-	#else
-		return daemon(0,0);
-	#endif
-}
-

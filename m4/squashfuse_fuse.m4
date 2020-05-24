@@ -143,12 +143,23 @@ AC_DEFUN([SQ_FIND_FUSE],[
 			[AC_MSG_FAILURE([Can't find FUSE in specified directories])])
 	])
 	
-	# pkgconfig
+	# Use pkgconfig to look for fuse3.
 	AS_IF([test "x$sq_fuse_found" = xyes],,[
 		SQ_SAVE_FLAGS
-		SQ_PKG([fuse],[fuse >= 2.5],
-			[SQ_TRY_FUSE(,[sq_fuse_found=yes],
-				[AC_MSG_FAILURE([Can't find FUSE with pkgconfig])])],
+		SQ_PKG([fuse3],[fuse3 >= 3.2],
+			[ AC_DEFINE([FUSE_USE_VERSION], [32], [Version of FUSE API to use])
+              SQ_TRY_FUSE(,[sq_fuse_found=yes],
+	        [AC_MSG_FAILURE([Can't find FUSE with pkgconfig])])],
+			[:])
+		SQ_KEEP_FLAGS([FUSE],[$sq_fuse_found])
+	])
+	# Use pkgconfig to look for fuse2.
+	AS_IF([test "x$sq_fuse_found" = xyes],,[
+        AC_DEFINE([FUSE_USE_VERSION], [26], [Version of FUSE API to use])
+		SQ_SAVE_FLAGS
+		SQ_PKG([fuse],[fuse >= 2.6],
+            [SQ_TRY_FUSE(,[sq_fuse_found=yes],
+	        [AC_MSG_FAILURE([Can't find FUSE with pkgconfig])])],
 			[:])
 		SQ_KEEP_FLAGS([FUSE],[$sq_fuse_found])
 	])
@@ -174,42 +185,42 @@ AC_DEFUN([SQ_FIND_FUSE],[
 AC_DEFUN([SQ_FUSE_API],[
 	AC_ARG_ENABLE([high-level],
 		AS_HELP_STRING([--disable-high-level], [disable high-level FUSE driver]),,
-		[enable_high_level=yes])
+		[sq_high_level=yes])
 	AC_ARG_ENABLE([low-level],
 		AS_HELP_STRING([--disable-low-level], [disable low-level FUSE driver]),,
-		[enable_low_level=check])
+		[sq_low_level=check])
 	AC_ARG_ENABLE(fuse,
 		AS_HELP_STRING([--disable-fuse], [disable all FUSE drivers]))
 	AS_IF([test "x$enable_fuse" = xno],[
-		enable_high_level=no
-		enable_low_level=no
+		sq_high_level=no
+		sq_low_level=no
 	])
 
-	AS_IF([test "x$enable_high_level$enable_low_level" = xnono],,[SQ_FIND_FUSE])
+	AS_IF([test "x$sq_high_level$sq_low_level" = xnono],,[SQ_FIND_FUSE])
 ])
 
 # SQ_FUSE_API_LOWLEVEL
 #
 # Check if we have the low-level FUSE API available
 AC_DEFUN([SQ_FUSE_API_LOWLEVEL],[
-	AS_IF([test "x$enable_low_level" = xno],,[
+	AS_IF([test "x$sq_low_level" = xno],,[
 		SQ_SAVE_FLAGS
 		LIBS="$LIBS $FUSE_LIBS"
 		CPPFLAGS="$CPPFLAGS $FUSE_CPPFLAGS"
 	
 		sq_fuse_lowlevel_found=yes
-		AC_CHECK_DECL([fuse_lowlevel_new],,[sq_fuse_lowlevel_found=no],
+		AC_CHECK_DECL([fuse_session_loop],,[sq_fuse_lowlevel_found=no],
 			[#include <fuse_lowlevel.h>])
-		AC_CHECK_FUNC([fuse_lowlevel_new],,[sq_fuse_lowlevel_found=no])
+		AC_CHECK_FUNC([fuse_session_loop],,[sq_fuse_lowlevel_found=no])
 	
 		SQ_RESTORE_FLAGS
 		
 		AS_IF([test "x$sq_fuse_lowlevel_found" = xno],[
 			sq_err="The low-level FUSE API is not available"
-			AS_IF([test "x$enable_low_level" = xyes],[AC_MSG_FAILURE($sq_err)],
+			AS_IF([test "x$sq_low_level" = xyes],[AC_MSG_FAILURE($sq_err)],
 				[AC_MSG_WARN($sq_err)])
 		])
-		enable_low_level="$sq_fuse_lowlevel_found"
+		sq_low_level="$sq_fuse_lowlevel_found"
 	])
 ])
 
@@ -217,11 +228,12 @@ AC_DEFUN([SQ_FUSE_API_LOWLEVEL],[
 #
 # Handle the results of FUSE checks
 AC_DEFUN([SQ_FUSE_RESULT],[
-	AS_IF([test "x$enable_high_level$enable_low_level" = xnono],[
+	AS_IF([test "x$sq_high_level$sq_low_level" = xnono],[
 		AC_MSG_WARN([Without any FUSE support, you will not be able to mount squashfs archives])
 	])
-	AM_CONDITIONAL([SQ_WANT_HIGHLEVEL], [test "x$enable_high_level" = xyes])
-	AM_CONDITIONAL([SQ_WANT_LOWLEVEL], [test "x$enable_low_level" = xyes])
+	AM_CONDITIONAL([SQ_WANT_HIGHLEVEL], [test "x$sq_high_level" = xyes])
+	AM_CONDITIONAL([SQ_WANT_LOWLEVEL], [test "x$sq_low_level" = xyes])
+	AM_CONDITIONAL([SQ_WANT_FUSE], [test "x$sq_high_level$sq_low_level" != xnono])
 ])
 
 # SQ_FUSE_API_VERSION
@@ -232,7 +244,7 @@ AC_DEFUN([SQ_FUSE_API_VERSION],[
 	LIBS="$LIBS $FUSE_LIBS"
 	CPPFLAGS="$CPPFLAGS $FUSE_CPPFLAGS"
 	
-	AS_IF([test "x$enable_low_level" = xyes],[
+	AS_IF([test "x$sq_low_level" = xyes],[
 		AC_CHECK_DECLS([fuse_add_direntry,fuse_add_dirent],[found_dirent=yes],,
 			[#include <fuse_lowlevel.h>])
 		AS_IF([test "x$found_dirent" = xyes],,

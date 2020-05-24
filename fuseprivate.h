@@ -27,14 +27,14 @@
 
 #include "squashfuse.h"
 
+#if FUSE_USE_VERSION >= 30
+#include <fuse3/fuse.h>
+#include <fuse3/fuse_lowlevel.h>
+#else
 #include <fuse.h>
-
-#include <sys/stat.h>
+#endif
 
 /* Common functions for FUSE high- and low-level clients */
-
-/* Fill in a stat structure. Does not set st_ino */
-sqfs_err sqfs_stat(sqfs *fs, sqfs_inode *inode, struct stat *st);
 
 /* Populate an xattr list. Return an errno value. */
 int sqfs_listxattr(sqfs *fs, sqfs_inode *inode, char *buf, size_t *size);
@@ -49,8 +49,12 @@ typedef struct {
 	int mountpoint;
 	size_t offset;
 	const char *key;
+	unsigned int idle_timeout_secs;
 } sqfs_opts;
 int sqfs_opt_proc(void *data, const char *arg, int key,
 	struct fuse_args *outargs);
+
+/* Get filesystem super block info */
+int sqfs_statfs(sqfs *sq, struct statvfs *st);
 
 #endif
