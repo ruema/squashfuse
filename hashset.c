@@ -32,52 +32,43 @@ static int hashset_bucketidx(hashset *m, unsigned hash) {
 }
 
 static int hashset_resize(hashset *m, int nbuckets) {
-  hashset_node *nodes, *node, *next;
-  hashset_node **buckets;
-  int i; 
-  /* Chain all nodes together */
-  nodes = NULL;
-  i = m->nbuckets;
+  hashset_node *node, *next;
+  hashset_node **old_buckets = m->buckets;
+  int i = m->nbuckets;
+  /* new buckets */
+  m->nbuckets = nbuckets;
+  m->buckets = malloc(sizeof(*m->buckets) * nbuckets);
+  if (m->buckets == NULL) return -1;
+  memset(m->buckets, 0, sizeof(*m->buckets) * m->nbuckets);
+  /* add all nodes to new buckets */
   while (i--) {
-    node = (m->buckets)[i];
+    node = old_buckets[i];
     while (node) {
       next = node->next;
-      node->next = nodes;
-      nodes = node;
+      int n = hashset_bucketidx(m, node->hash);
+      node->next = m->buckets[n];
+      m->buckets[n] = node;
       node = next;
     }
   }
-  /* Reset buckets */
-  buckets = realloc(m->buckets, sizeof(*m->buckets) * nbuckets);
-  if (buckets == NULL) return -1;
-  m->buckets = buckets;
-  m->nbuckets = nbuckets;
-  memset(m->buckets, 0, sizeof(*m->buckets) * m->nbuckets);
-  /* Re-add nodes to buckets */
-  node = nodes;
-  while (node) {
-    next = node->next;
-    int n = hashset_bucketidx(m, node->hash);
-	node->next = m->buckets[n];
-	m->buckets[n] = node;
-    node = next;
-  }
+  free(old_buckets);
   return 0;
 }
 
-int hashset_contains(hashset *m, const char *key) {
+int hashset_getlevel(hashset *m, const char *key) {
+  /* a return level of -1 indicates non existing key */
   unsigned hash = str_hash(key);
   hashset_node *node;
   if (m->nbuckets > 0) {
     node = m->buckets[hashset_bucketidx(m, hash)];
     while (node) {
       if (node->hash == hash && !strcmp((char*) (node + 1), key)) {
-        return 1;
+        return node->level;
       }
       node = node->next;
     }
   }
-  return 0;
+  return -1;
 }
 
 void hashset_free(hashset *m) {
@@ -95,11 +86,13 @@ void hashset_free(hashset *m) {
   free(m->buckets);
 }
 
-int hashset_add(hashset *m, const char *key) {
+int hashset_add(hashset *m, const char *key, int level) {
+  /* returns the current level for existing keys or -1 on error */
   int n, err;
   hashset_node *node;
-  if(hashset_contains(m, key)) {
-  	return 1;
+  int current_level = hashset_getlevel(m, key);
+  if(current_level >= 0) {
+  	return current_level;
   }
   /* Add new node */
   node = hashset_newnode(key);
@@ -108,14 +101,15 @@ int hashset_add(hashset *m, const char *key) {
     n = (m->nbuckets > 0) ? (m->nbuckets << 1) : 1;
     err = hashset_resize(m, n);
     if (err) {
-	  free(node);
-	  return -1;
-	}
+	    free(node);
+	    return -1;
+	  }
   }
   n = hashset_bucketidx(m, node->hash);
+  node->level = level;
   node->next = m->buckets[n];
   m->buckets[n] = node;
   m->nnodes++;
-  return 0;
+  return level;
 }
 

@@ -42,15 +42,17 @@ struct sqfs_hl {
 };
 
 static sqfs_err sqfs_hl_lookup(sqfs_inode *inode, const char *path) {
-	bool found;
+	int found;
 	sqfs_hl *hl = fuse_get_context()->private_data;
 	while(hl->fs.fd) {
 		*inode = hl->root; /* copy */
 		sqfs_err err = sqfs_lookup_path(inode->fs, inode, path, &found);
 		if (err)
 			return err;
-		if (found)
+		if (found & FOUND)
 			return SQFS_OK;
+		if (found & HIDDEN)
+			break;
 		hl++;
 	}
 	return SQFS_ERR;
@@ -91,7 +93,7 @@ static int sqfs_hl_op_getattr(const char *path, struct stat *st
 
 static int sqfs_hl_op_opendir(const char *path, struct fuse_file_info *fi) {
 	sqfs_inode *inodes, *inode;
-	bool found;
+	int found;
 	int count=0;
 	sqfs_hl *hl = fuse_get_context()->private_data;
 	while(hl->fs.fd) {
@@ -111,7 +113,7 @@ static int sqfs_hl_op_opendir(const char *path, struct fuse_file_info *fi) {
 			free(inodes);
 			return -ENOENT;
 		}
-		if (found) {
+		if (found & FOUND) {
 			if (!S_ISDIR(inode->base.mode)) {
 				if (inode == inodes) {
 					free(inodes);
@@ -121,6 +123,8 @@ static int sqfs_hl_op_opendir(const char *path, struct fuse_file_info *fi) {
 			}
 			inode++;
 		}
+		if (found & HIDDEN)
+			break;
 		hl++;
 	}
 	if (inode == inodes) {
@@ -163,14 +167,17 @@ static int sqfs_hl_op_readdir(const char *path, void *buf,
 		
 		sqfs_dentry_init(&entry, namebuf);
 		while (sqfs_dir_next(fs, &dir, &entry, &err)) {
-			sqfs_off_t doff = sqfs_dentry_next_offset(&entry);
-			st.st_mode = sqfs_dentry_mode(&entry);
-			if (filler(buf, sqfs_dentry_name(&entry), &st, doff
+			const char* name = sqfs_dentry_name(&entry);
+			if (strncmp(".wh.", name, 4) != 0) {
+				sqfs_off_t doff = sqfs_dentry_next_offset(&entry);
+				st.st_mode = sqfs_dentry_mode(&entry);
+				if (filler(buf, sqfs_dentry_name(&entry), &st, doff
 #if FUSE_USE_VERSION >= 30
-			   , 0
+				   , 0
 #endif
-			   )) {
-				return 0;
+				   )) {
+					return 0;
+				}
 			}
 		}
 		if (err)
@@ -180,44 +187,55 @@ static int sqfs_hl_op_readdir(const char *path, void *buf,
 
 	hashset m;
 	hashset_init(&m);
+	int level = 1;
 	while(inode->fs) {
-		if (sqfs_dir_open(inode->fs, inode, &dir, 0))
+		if (sqfs_dir_open(inode->fs, inode, &dir, 0)) {
+			hashset_free(&m);
 			return -EINVAL;
+		}
 		
 		sqfs_dentry_init(&entry, namebuf);
 		while (sqfs_dir_next(inode->fs, &dir, &entry, &err)) {
 			const char* name = sqfs_dentry_name(&entry);
-			int r = hashset_add(&m, name);
-			if(r<0) {
-				hashset_free(&m);
-				return -EIO;
-			}
-			if(!r) {
-  			  st.st_mode = sqfs_dentry_mode(&entry);
-			  /* sqfs_off_t coff = sqfs_dentry_offset(&entry);
-			  sqfs_off_t doff = sqfs_dentry_next_offset(&entry);
-			  off_t new_offset = current_offset + doff - coff;
-  			  if(offset<=current_offset && filler(buf, name, &st, new_offset)) {
-				goto finish;
-			  }
-			  current_offset = new_offset;*/
-  			  if(filler(buf, name, &st, 0
+			if (strncmp(".wh.", name, 4) != 0) {
+				int r = hashset_add(&m, name, level);
+				if(r < 0) goto error;
+				if(r == level) {
+	  			  st.st_mode = sqfs_dentry_mode(&entry);
+				  /* sqfs_off_t coff = sqfs_dentry_offset(&entry);
+				  sqfs_off_t doff = sqfs_dentry_next_offset(&entry);
+				  off_t new_offset = current_offset + doff - coff;
+	  			  if(offset<=current_offset && filler(buf, name, &st, new_offset)) {
+					goto finish;
+				  }
+				  current_offset = new_offset;*/
+	  			  if(filler(buf, name, &st, 0
 #if FUSE_USE_VERSION >= 30
-			   , 0
+				   , 0
 #endif
-  			  	))
-				goto finish;
+	  			  	))
+					goto finish;
+				}
+			} else if(strcmp(".wh..wh..opq", name) == 0) {
+				// this is the last layer
+				inode[1].fs = NULL;
+			} else {
+				// add this name to the seen names
+				// e.g. hide this name
+				int r = hashset_add(&m, name + 4, level);
+				if(r<0) goto error;
 			}
 		}
-		if (err) {
-			hashset_free(&m);
-			return -EIO;
-		}
+		if (err) goto error;
 		inode++;
+		level++;
 	}
 finish:
 	hashset_free(&m);
 	return 0;
+error:
+	hashset_free(&m);
+	return -EIO;
 }
 
 static int sqfs_hl_op_open(const char *path, struct fuse_file_info *fi) {

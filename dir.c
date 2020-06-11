@@ -238,7 +238,6 @@ static sqfs_err sqfs_dir_ff_name_f(sqfs *fs, sqfs_md_cursor *cur,
 	if ((err = sqfs_md_read(fs, cur, args->name, name_size)))
 		return err;
 	args->name[name_size] = '\0';
-	
 	int order = strncmp(args->name, args->cmp, args->cmplen);
 	if (order > 0 || (order == 0 && name_size > args->cmplen))
 		*stop = true;
@@ -247,49 +246,111 @@ static sqfs_err sqfs_dir_ff_name_f(sqfs *fs, sqfs_md_cursor *cur,
 }
 
 sqfs_err sqfs_dir_lookup(sqfs *fs, sqfs_inode *inode,
-		const char *name, size_t namelen, sqfs_dir_entry *entry, bool *found) {
+		const char *name, size_t namelen, sqfs_dir_entry *entry, int *found) {
 	sqfs_err err;
 	sqfs_dir dir;
 	sqfs_dir_ff_name_t arg;
-	
-	*found = false;
-	
+	int order, ok;
+
+	*found = 0;
 	if ((err = sqfs_dir_open(fs, inode, &dir, 0)))
 		return err;
-	
-	/* Fast forward to header */
-	arg.cmp = name;
-	arg.cmplen = namelen;
-	arg.name = entry->name;
-	if ((err = sqfs_dir_ff_header(fs, inode, &dir, sqfs_dir_ff_name_f, &arg)))
-		return err;
-	
-	/* Iterate to find the right entry */
-	while (sqfs_dir_next(fs, &dir, entry, &err)) {
-		int order = strncmp(sqfs_dentry_name(entry), name, namelen);
-		if (order == 0 && sqfs_dentry_name_size(entry) == namelen)
-			*found = true;
-		if (order >= 0)
-			break;
+	order = strncmp(".wh.", name, 4 < namelen ? 4 : namelen);
+	if(order > 0) {
+		// name lies before .wh.
+		/* Iterate to find the right entry */
+		while ((ok = sqfs_dir_next(fs, &dir, entry, &err))) {
+		    order = strncmp(sqfs_dentry_name(entry), name, namelen);
+			if (order == 0 && sqfs_dentry_name_size(entry) == namelen)
+				*found = FOUND;
+			if (order >= 0)
+				break;
+		}
+		while (ok) {
+			order = strncmp(sqfs_dentry_name(entry), ".wh.", 4);
+			if (order > 0)
+				break;
+			if (order == 0) {
+				order = strncmp(sqfs_dentry_name(entry) + 4, name, namelen);
+				if (order == 0 && sqfs_dentry_name_size(entry) == namelen + 4)
+					*found = HIDDEN;
+				if (order >= 0)
+					break;
+			}
+			ok = sqfs_dir_next(fs, &dir, entry, &err);
+		}
+		while (ok) {
+			order = strcmp(sqfs_dentry_name(entry), ".wh..wh..opq");
+			if (order == 0)
+				*found = HIDDEN;
+			if (order >= 0)
+				break;
+			ok = sqfs_dir_next(fs, &dir, entry, &err);
+		}
+	} else if (order==0 && namelen >= 4) {
+		// .wh.-File are hidden
+		*found = HIDDEN;
+	} else {
+		while ((ok = sqfs_dir_next(fs, &dir, entry, &err))) {
+			order = strcmp(sqfs_dentry_name(entry), ".wh..wh..opq");
+			if (order == 0)
+				*found |= HIDDEN;
+			if (order >= 0)
+				break;
+		}
+		while (ok) {
+			order = strncmp(sqfs_dentry_name(entry), ".wh.", 4);
+			if (order > 0)
+				break;
+			if (order == 0) {
+				order = strncmp(sqfs_dentry_name(entry) + 4, name, namelen);
+				if (order == 0 && sqfs_dentry_name_size(entry) == namelen + 4)
+					*found |= HIDDEN;
+				if (order >= 0)
+					break;
+			}
+			ok = sqfs_dir_next(fs, &dir, entry, &err);
+		}
+
+		if(inode->xtra.dir.idx_count) {
+			if ((err = sqfs_dir_open(fs, inode, &dir, 0)))
+				return err;
+			/* Fast forward to header */
+			arg.cmp = name;
+			arg.cmplen = namelen;
+			arg.name = entry->name;
+			if ((err = sqfs_dir_ff_header(fs, inode, &dir, sqfs_dir_ff_name_f, &arg)))
+				return err;
+			ok = sqfs_dir_next(fs, &dir, entry, &err);
+		}
+		
+		/* Iterate to find the right entry */
+		while (ok) {
+			order = strncmp(sqfs_dentry_name(entry), name, namelen);
+			if (order == 0 && sqfs_dentry_name_size(entry) == namelen)
+				*found |= FOUND;
+			if (order >= 0)
+				break;
+			ok = sqfs_dir_next(fs, &dir, entry, &err);
+		}
 	}
-	
 	return err;
 }
 
 
 sqfs_err sqfs_lookup_path(sqfs *fs, sqfs_inode *inode, const char *path,
-		bool *found) {
+		int *found) {
 	sqfs_err err;
 	sqfs_name buf;
 	sqfs_dir_entry entry;
 	
-	*found = false;
+	*found = 0;
 	sqfs_dentry_init(&entry, buf);
 	
 	while (*path) {
 		const char *name;
 		size_t size;
-		bool dfound;
+		int dfound;
 		
 		/* Find next path component */
 		while (*path == '/') /* skip leading slashes */
@@ -304,13 +365,15 @@ sqfs_err sqfs_lookup_path(sqfs *fs, sqfs_inode *inode, const char *path,
 		
 		if ((err = sqfs_dir_lookup(fs, inode, name, size, &entry, &dfound)))
 			return err;
-		if (!dfound)
+		if(dfound & HIDDEN) {
+			*found |= HIDDEN;
+		}
+		if(!(dfound & FOUND))
 			return SQFS_OK; /* not found */
 		
 		if ((err = sqfs_inode_get(fs, inode, sqfs_dentry_inode(&entry))))
 			return err;
 	}
-	
-	*found = true;
+	*found |= FOUND;
 	return SQFS_OK;
 }

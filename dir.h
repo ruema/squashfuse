@@ -29,6 +29,9 @@
 
 #include "squashfs_fs.h"
 
+#define FOUND 1
+#define HIDDEN 2
+
 typedef struct {
 	sqfs_md_cursor cur;
 	sqfs_off_t offset, total;
@@ -65,12 +68,12 @@ bool sqfs_dir_next(sqfs *fs, sqfs_dir *dir, sqfs_dir_entry *entry,
 /* Lookup an entry in a directory inode.
 	 The dir_entry must have been initialized with a buffer. */
 sqfs_err sqfs_dir_lookup(sqfs *fs, sqfs_inode *inode,
-	const char *name, size_t namelen, sqfs_dir_entry *entry, bool *found);
+	const char *name, size_t namelen, sqfs_dir_entry *entry, int *found);
 
 /* Lookup a complete path, and replace *inode with the results.
 	 Uses / (slash) as the directory separator. */
 sqfs_err sqfs_lookup_path(sqfs *fs, sqfs_inode *inode, const char *path,
-	bool *found);
+	int *found);
 
 
 /* Accessors on sqfs_dir_entry */
