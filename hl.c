@@ -339,9 +339,9 @@ static int sqfs_hl_op_statfs(const char *path, struct statvfs *st) {
 	return sqfs_statfs(&hl->fs, st);
 }
 
-int sqfs_hl_open(sqfs_hl *hl, const char *path, size_t offset, const char *key) {
+int sqfs_hl_open(sqfs_hl *hl, const char *path, size_t offset) {
 	memset(hl, 0, sizeof(*hl));
-	if (sqfs_open_image(&hl->fs, path, offset, key) == SQFS_OK) {
+	if (sqfs_open_image(&hl->fs, path, offset) == SQFS_OK) {
 		if (sqfs_inode_get(&hl->fs, &hl->root, sqfs_inode_root(&hl->fs)))
 			fprintf(stderr, "Can't find the root of this filesystem!\n");
 		else
@@ -359,7 +359,6 @@ int main(int argc, char *argv[]) {
 	
 	struct fuse_opt fuse_opts[] = {
 		{"offset=%zu", offsetof(sqfs_opts, offset), 0},
-		{"key=%s", offsetof(sqfs_opts, key), 0},
 		FUSE_OPT_END
 	};
 
@@ -388,7 +387,6 @@ int main(int argc, char *argv[]) {
 	opts.image = NULL;
 	opts.mountpoint = 0;
 	opts.offset = 0;
-	opts.key = NULL;
 	if (fuse_opt_parse(&args, &opts, fuse_opts, sqfs_opt_proc) == -1)
 		sqfs_usage(argv[0], true);
 	if (!opts.image)
@@ -413,7 +411,7 @@ int main(int argc, char *argv[]) {
 	image = (char*)opts.image;
 	hl = hls;
 	while(cnt_images-- > 0) {
-		if(sqfs_hl_open(hl, image, opts.offset, opts.key)<0)
+		if(sqfs_hl_open(hl, image, opts.offset)<0)
 			return -1;
 		hl += 1;
 		while(*image) image++;

@@ -170,7 +170,7 @@ static void sqfs_ll_op_lookup(fuse_req_t req, fuse_ino_t parent,
 	sqfs_err sqerr;
 	sqfs_name namebuf;
 	sqfs_dir_entry entry;
-	bool found;
+	int found;
 	sqfs_inode inode;
 	
 	last_access = time(NULL);
@@ -189,7 +189,7 @@ static void sqfs_ll_op_lookup(fuse_req_t req, fuse_ino_t parent,
 		fuse_reply_err(req, EIO);
 		return;
 	}
-	if (!found) {
+	if ((found & FOUND) == 0) {
 		fuse_reply_err(req, ENOENT);
 		return;
 	}
@@ -531,7 +531,7 @@ static sqfs_ll *sqfs_ll_open(const char *path, size_t offset) {
 	} else {
 		memset(ll, 0, sizeof(*ll));
 		ll->fs.offset = offset;
-		if (sqfs_open_image(&ll->fs, path, offset, NULL) == SQFS_OK) {
+		if (sqfs_open_image(&ll->fs, path, offset) == SQFS_OK) {
 			if (sqfs_ll_init(ll))
 				fprintf(stderr, "Can't initialize this filesystem!\n");
 			else

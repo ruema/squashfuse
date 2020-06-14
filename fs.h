@@ -37,7 +37,6 @@ struct sqfs {
 	sqfs_fd_t fd;
 	size_t offset;
 	struct squashfs_super_block sb;
-	void *luks;
 	sqfs_table id_table;
 	sqfs_table frag_table;
 	sqfs_table export_table;
@@ -46,6 +45,7 @@ struct sqfs {
 	sqfs_cache frag_cache;
 	sqfs_cache blockidx;
 	sqfs_decompressor decompressor;
+	void *crypto;
 	
 	struct squashfs_xattr_id_table xattr_info;
 	sqfs_table xattr_table;

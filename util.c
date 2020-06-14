@@ -26,6 +26,8 @@
 
 #include "fs.h"
 
+#include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 
 #ifdef _WIN32
@@ -67,11 +69,17 @@
 
 /* TODO: WIN32 implementation of open/close */
 /* TODO: i18n of error messages */
-sqfs_err sqfs_open_image(sqfs *fs, const char *image, size_t offset, const char *key) {
+sqfs_err sqfs_open_image(sqfs *fs, const char *image, size_t offset) {
 	sqfs_err err;
 	sqfs_fd_t fd;
-
-	if ((err = sqfs_fd_open(image, &fd, stderr)))
+	char *image_fs = (char*)image;
+	char *chr = strchr(image, ',');
+	char *key = NULL;
+	if(chr) {
+		image_fs = strndup(image, chr-image);
+		key = chr + 1;
+	}
+	if ((err = sqfs_fd_open(image_fs, &fd, stderr)))
 		return err;
 
 	err = sqfs_init(fs, fd, offset, key);
@@ -120,6 +128,9 @@ sqfs_err sqfs_open_image(sqfs *fs, const char *image, size_t offset, const char 
 
 	if (err)
 		sqfs_fd_close(fd);
+	if (image_fs != image) {
+		free(image_fs);
+	}
 	return err;
 }
 
