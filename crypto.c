@@ -83,10 +83,8 @@ sqfs_err crypt_init_key(sqfs *fs, const char *key) {
                 char *nonce = strchr(symkey, ',') + 1;
                 chr = strchr(nonce, 0);
                 length = b64_decode_length(symkey, nonce - symkey - 1);
-                printf("A:%d\n",length);
                 if (length != 32) return SQFS_ERR;
                 length = b64_decode_length(nonce, chr - nonce);
-                printf("A:%d\n",length);
                 if (length != 16) return SQFS_ERR;
                 struct crypto *crypto = malloc(sizeof(struct crypto));
                 b64_decode(symkey, nonce - symkey - 1, crypt_key);
