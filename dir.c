@@ -250,6 +250,9 @@ sqfs_err sqfs_dir_lookup(sqfs *fs, sqfs_inode *inode,
 	sqfs_err err;
 	sqfs_dir dir;
 	sqfs_dir_ff_name_t arg;
+	sqfs_name hidden_buf;
+	sqfs_dir_entry hidden_entry;
+	sqfs_dentry_init(&hidden_entry, hidden_buf);
 	int order, ok;
 
 	*found = 0;
@@ -266,50 +269,51 @@ sqfs_err sqfs_dir_lookup(sqfs *fs, sqfs_inode *inode,
 			if (order >= 0)
 				break;
 		}
+		hidden_entry = *entry;
 		while (ok) {
-			order = strncmp(sqfs_dentry_name(entry), ".wh.", 4);
+			order = strncmp(sqfs_dentry_name(&hidden_entry), ".wh.", 4);
 			if (order > 0)
 				break;
 			if (order == 0) {
-				order = strncmp(sqfs_dentry_name(entry) + 4, name, namelen);
-				if (order == 0 && sqfs_dentry_name_size(entry) == namelen + 4)
+				order = strncmp(sqfs_dentry_name(&hidden_entry) + 4, name, namelen);
+				if (order == 0 && sqfs_dentry_name_size(&hidden_entry) == namelen + 4)
 					*found = HIDDEN;
 				if (order >= 0)
 					break;
 			}
-			ok = sqfs_dir_next(fs, &dir, entry, &err);
+			ok = sqfs_dir_next(fs, &dir, &hidden_entry, &err);
 		}
 		while (ok) {
-			order = strcmp(sqfs_dentry_name(entry), ".wh..wh..opq");
+			order = strcmp(sqfs_dentry_name(&hidden_entry), ".wh..wh..opq");
 			if (order == 0)
 				*found = HIDDEN;
 			if (order >= 0)
 				break;
-			ok = sqfs_dir_next(fs, &dir, entry, &err);
+			ok = sqfs_dir_next(fs, &dir, &hidden_entry, &err);
 		}
 	} else if (order==0 && namelen >= 4) {
 		// .wh.-File are hidden
 		*found = HIDDEN;
 	} else {
-		while ((ok = sqfs_dir_next(fs, &dir, entry, &err))) {
-			order = strcmp(sqfs_dentry_name(entry), ".wh..wh..opq");
+		while ((ok = sqfs_dir_next(fs, &dir, &hidden_entry, &err))) {
+			order = strcmp(sqfs_dentry_name(&hidden_entry), ".wh..wh..opq");
 			if (order == 0)
 				*found |= HIDDEN;
 			if (order >= 0)
 				break;
 		}
 		while (ok) {
-			order = strncmp(sqfs_dentry_name(entry), ".wh.", 4);
+			order = strncmp(sqfs_dentry_name(&hidden_entry), ".wh.", 4);
 			if (order > 0)
 				break;
 			if (order == 0) {
-				order = strncmp(sqfs_dentry_name(entry) + 4, name, namelen);
-				if (order == 0 && sqfs_dentry_name_size(entry) == namelen + 4)
+				order = strncmp(sqfs_dentry_name(&hidden_entry) + 4, name, namelen);
+				if (order == 0 && sqfs_dentry_name_size(&hidden_entry) == namelen + 4)
 					*found |= HIDDEN;
 				if (order >= 0)
 					break;
 			}
-			ok = sqfs_dir_next(fs, &dir, entry, &err);
+			ok = sqfs_dir_next(fs, &dir, &hidden_entry, &err);
 		}
 
 		if(inode->xtra.dir.idx_count) {
@@ -322,6 +326,8 @@ sqfs_err sqfs_dir_lookup(sqfs *fs, sqfs_inode *inode,
 			if ((err = sqfs_dir_ff_header(fs, inode, &dir, sqfs_dir_ff_name_f, &arg)))
 				return err;
 			ok = sqfs_dir_next(fs, &dir, entry, &err);
+		} else {
+			*entry = hidden_entry;
 		}
 		
 		/* Iterate to find the right entry */

@@ -77,7 +77,7 @@ void b64_decode(const char* in, int length, unsigned char *result) {
 sqfs_err crypt_init_key(sqfs *fs, const char *key) {
         char *chr = strchr(key, ',');
         if(strncmp("AES_256_CTR", key, chr-key) == 0) {
-                char crypt_key[32];
+                unsigned char crypt_key[32];
                 int length;
                 char *symkey = chr + 1;
                 char *nonce = strchr(symkey, ',') + 1;
