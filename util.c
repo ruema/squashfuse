@@ -22,6 +22,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#define _GNU_SOURCE
 #include "util.h"
 
 #include "fs.h"
@@ -52,7 +53,7 @@
 	#include <unistd.h>
 
 	sqfs_err sqfs_fd_open(const char *path, sqfs_fd_t *fd, bool print) {
-		*fd = open(path, O_RDONLY);
+		*fd = open(path, O_RDONLY | O_CLOEXEC);
 		if (*fd != -1)
 			return SQFS_OK;
 
