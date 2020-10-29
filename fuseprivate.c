@@ -61,7 +61,7 @@ int sqfs_listxattr(sqfs *fs, sqfs_inode *inode, char *buf, size_t *size) {
 
 void sqfs_usage(char *progname, bool fuse_usage) {
 	fprintf(stderr, "%s (c) 2012 Dave Vasilevsky\n\n", PACKAGE_STRING);
-	fprintf(stderr, "Usage: %s [options] ARCHIVE MOUNTPOINT\n",
+	fprintf(stderr, "Usage: %s [options] ARCHIVE [ARCHIVE...] MOUNTPOINT\n",
 		progname ? progname : PACKAGE_NAME);
 	if (fuse_usage) {
 #if FUSE_USE_VERSION >= 30
@@ -81,15 +81,8 @@ int sqfs_opt_proc(void *data, const char *arg, int key,
 		struct fuse_args *outargs) {
 	sqfs_opts *opts = (sqfs_opts*)data;
 	if (key == FUSE_OPT_KEY_NONOPT) {
-		if (opts->mountpoint) {
-			return -1; /* Too many args */
-		} else if (opts->image) {
-			opts->mountpoint = 1;
-			return 1;
-		} else {
-			opts->image = arg;
-			return 0;
-		}
+		opts->images[opts->image_count++] = arg;
+		return 0;
 	} else if (key == FUSE_OPT_KEY_OPT) {
 		if (strncmp(arg, "-h", 2) == 0 || strncmp(arg, "--h", 3) == 0)
 			sqfs_usage(opts->progname, true);

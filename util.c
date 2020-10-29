@@ -23,6 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #define _GNU_SOURCE
+#define _DARWIN_C_SOURCE
 #include "util.h"
 
 #include "fs.h"
@@ -77,7 +78,7 @@ sqfs_err sqfs_open_image(sqfs *fs, const char *image, size_t offset) {
 	char *chr = strchr(image, ',');
 	char *key = NULL;
 	if(chr) {
-		image_fs = strndup(image, chr-image);
+		image_fs = strndup(image, (size_t)(chr-image));
 		key = chr + 1;
 	}
 	if ((err = sqfs_fd_open(image_fs, &fd, stderr)))

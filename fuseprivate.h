@@ -45,8 +45,8 @@ void sqfs_usage(char *progname, bool fuse_usage);
 /* Parse command-line arguments */
 typedef struct {
 	char *progname;
-	const char *image;
-	int mountpoint;
+	const char **images;
+	int image_count;
 	size_t offset;
 	unsigned int idle_timeout_secs;
 } sqfs_opts;

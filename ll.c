@@ -588,12 +588,15 @@ int main(int argc, char *argv[]) {
 	args.allocated = 0;
 	
 	opts.progname = argv[0];
-	opts.image = NULL;
-	opts.mountpoint = 0;
+	opts.images = malloc(argc * sizeof(char*)); /* enough room for all images */
+	opts.image_count = 0;
 	opts.offset = 0;
 	opts.idle_timeout_secs = 0;
 	if (fuse_opt_parse(&args, &opts, fuse_opts, sqfs_opt_proc) == -1)
 		sqfs_usage(argv[0], true);
+    if(opts.image_count != 2)
+		sqfs_usage(argv[0], true);
+    fuse_opt_add_arg(&args, opts.images[--opts.image_count]); /* add mountpoint to args */
 
 #if FUSE_USE_VERSION >= 30
 	if (fuse_parse_cmdline(&args, &fuse_cmdline_opts) != 0)
@@ -608,7 +611,7 @@ int main(int argc, char *argv[]) {
 		sqfs_usage(argv[0], true);
 	
 	/* OPEN FS */
-	err = !(ll = sqfs_ll_open(opts.image, opts.offset));
+	err = !(ll = sqfs_ll_open(opts.images[0], opts.offset));
 	
 	/* STARTUP FUSE */
 	if (!err) {
