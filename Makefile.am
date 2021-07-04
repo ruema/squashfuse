@@ -20,20 +20,27 @@ pkgincludedir = @includedir@/squashfuse
 pkginclude_HEADERS = squashfuse.h squashfs_fs.h \
 	cache.h common.h config.h decompress.h dir.h file.h fs.h stack.h table.h \
 	traverse.h util.h xattr.h aes.h crypto.h
-
 pkgconfigdir = @pkgconfigdir@
 pkgconfig_DATA 	= squashfuse.pc
 
-# Main library: libsquashfuse
-libsquashfuse_la_SOURCES = swap.c cache.c table.c dir.c file.c fs.c \
+# Convenience lib to we get static executables
+noinst_LTLIBRARIES += libsquashfuse_convenience.la
+libsquashfuse_convenience_la_SOURCES = swap.c cache.c table.c dir.c file.c fs.c \
 	decompress.c xattr.c hash.c stack.c traverse.c util.c \
 	nonstd-pread.c nonstd-stat.c hashset.c aes.c crypto.c \
 	squashfs_fs.h common.h nonstd-internal.h nonstd.h swap.h cache.h table.h \
 	dir.h file.h decompress.h xattr.h squashfuse.h hash.h stack.h traverse.h \
 	util.h fs.h hashset.h aes.h crypto.h
+libsquashfuse_convenience_la_CPPFLAGS = $(ZLIB_CPPFLAGS) $(XZ_CPPFLAGS) $(LZO_CPPFLAGS) \
+	$(LZ4_CPPFLAGS) $(ZSTD_CPPFLAGS) $(FUSE_CPPFLAGS)
+libsquashfuse_convenience_la_LIBADD = $(COMPRESSION_LIBS) $(FUSE_LIBS)
+
+# Main library: libsquashfuse
+lib_LTLIBRARIES += libsquashfuse.la
+libsquashfuse_la_SOURCES =
 libsquashfuse_la_CPPFLAGS = $(ZLIB_CPPFLAGS) $(XZ_CPPFLAGS) $(LZO_CPPFLAGS) \
-	$(LZ4_CPPFLAGS) $(ZSTD_CPPFLAGS)
-libsquashfuse_la_LIBADD =
+	$(LZ4_CPPFLAGS) $(ZSTD_CPPFLAGS) $(FUSE_CPPFLAGS)
+libsquashfuse_la_LIBADD = libsquashfuse_convenience.la
 
 # Combined library: libsquash
 libsquash_la_SOURCES = hl_squash.c swap.c cache.c table.c dir.c file.c fs.c \
@@ -53,7 +60,7 @@ if SQ_WANT_FUSE
 libfuseprivate_la_SOURCES = fuseprivate.c nonstd-makedev.c nonstd-enoattr.c \
 	fuseprivate.h stat.h stat.c
 libfuseprivate_la_CPPFLAGS = $(FUSE_CPPFLAGS)
-libfuseprivate_la_LIBADD =
+libfuseprivate_la_LIBADD = $(COMPRESSION_LIBS) $(FUSE_LIBS)
 noinst_LTLIBRARIES += libfuseprivate.la
 endif
 
@@ -61,21 +68,38 @@ endif
 if SQ_WANT_HIGHLEVEL
 bin_PROGRAMS += squashfuse
 squashfuse_SOURCES = hl.c hl_squash.c
-squashfuse_CPPFLAGS = $(FUSE_CPPFLAGS)
-squashfuse_LDADD = libsquashfuse.la libfuseprivate.la $(COMPRESSION_LIBS) \
-  $(FUSE_LIBS)
-
+squashfuse_CPPFLAGS = $(ZLIB_CPPFLAGS) $(XZ_CPPFLAGS) $(LZO_CPPFLAGS) \
+	$(LZ4_CPPFLAGS) $(ZSTD_CPPFLAGS) $(FUSE_CPPFLAGS)
+squashfuse_LDADD = libsquashfuse_convenience.la libfuseprivate.la $(COMPRESSION_LIBS) $(FUSE_LIBS)
 dist_man_MANS += squashfuse.1
 endif
 
 # Low-level squashfuse_ll, if supported
 if SQ_WANT_LOWLEVEL
-bin_PROGRAMS += squashfuse_ll
-squashfuse_ll_SOURCES = ll.c ll_inode.c nonstd-daemon.c ll.h
-squashfuse_ll_CPPFLAGS = $(FUSE_CPPFLAGS)
-squashfuse_ll_LDADD = libsquashfuse.la libfuseprivate.la $(COMPRESSION_LIBS) \
-  $(FUSE_LIBS)
 
+# convenience lib so we can link squashfuse_ll statically
+noinst_LTLIBRARIES += libsquashfuse_ll_convenience.la
+libsquashfuse_ll_convenience_la_SOURCES = ll.c ll_inode.c nonstd-daemon.c
+libsquashfuse_ll_convenience_la_CPPFLAGS = $(ZLIB_CPPFLAGS) $(XZ_CPPFLAGS) $(LZO_CPPFLAGS) \
+	$(LZ4_CPPFLAGS) $(ZSTD_CPPFLAGS) $(FUSE_CPPFLAGS)
+libsquashfuse_ll_convenience_la_LIBADD = libsquashfuse_convenience.la libfuseprivate.la
+
+# squashfuse_ll library we will install
+lib_LTLIBRARIES += libsquashfuse_ll.la
+libsquashfuse_ll_la_SOURCES =
+libsquashfuse_ll_la_CPPFLAGS = $(ZLIB_CPPFLAGS) $(XZ_CPPFLAGS) $(LZO_CPPFLAGS) \
+	$(LZ4_CPPFLAGS) $(ZSTD_CPPFLAGS) $(FUSE_CPPFLAGS)
+libsquashfuse_ll_la_LIBADD = libsquashfuse_ll_convenience.la $(COMPRESSION_LIBS) $(FUSE_LIBS)
+
+# squashfuse_ll binary that's statically linked against internal libs
+bin_PROGRAMS += squashfuse_ll
+squashfuse_ll_SOURCES = ll_main.c
+squashfuse_ll_CPPFLAGS = $(ZLIB_CPPFLAGS) $(XZ_CPPFLAGS) $(LZO_CPPFLAGS) \
+	$(LZ4_CPPFLAGS) $(ZSTD_CPPFLAGS) $(FUSE_CPPFLAGS)
+squashfuse_ll_LDADD = libsquashfuse_ll_convenience.la $(COMPRESSION_LIBS) $(FUSE_LIBS)
+
+pkgconfig_DATA += squashfuse_ll.pc
+pkginclude_HEADERS += ll.h
 endif
 
 
@@ -108,6 +132,6 @@ tests/ll-smoke.sh tests/ls.sh: tests/lib.sh
 # Handle generation of swap include files
 CLEANFILES = swap.h.inc swap.c.inc
 EXTRA_DIST += swap.h.inc swap.c.inc
-$(libsquashfuse_la_OBJECTS): swap.h.inc
+$(libsquashfuse_convenience_la_OBJECTS): swap.h.inc
 swap.h.inc swap.c.inc: gen_swap.sh squashfs_fs.h Makefile
 	SED="$(SED)" $(srcdir)/gen_swap.sh $(srcdir)/squashfs_fs.h
