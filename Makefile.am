@@ -13,7 +13,7 @@ EXTRA_DIST = gen_swap.sh autogen.sh LICENSE CONFIGURATION PLATFORMS NEWS win
 bin_PROGRAMS =
 noinst_PROGRAMS =
 
-lib_LTLIBRARIES = libsquashfuse.la libsquash.la
+lib_LTLIBRARIES = 
 noinst_LTLIBRARIES =
 
 pkgincludedir = @includedir@/squashfuse
@@ -43,6 +43,7 @@ libsquashfuse_la_CPPFLAGS = $(ZLIB_CPPFLAGS) $(XZ_CPPFLAGS) $(LZO_CPPFLAGS) \
 libsquashfuse_la_LIBADD = libsquashfuse_convenience.la
 
 # Combined library: libsquash
+lib_LTLIBRARIES += libsquash.la
 libsquash_la_SOURCES = hl_squash.c swap.c cache.c table.c dir.c file.c fs.c \
 	decompress.c xattr.c hash.c stack.c traverse.c util.c \
 	nonstd-pread.c nonstd-stat.c hashset.c aes.c crypto.c \
