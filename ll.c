@@ -190,10 +190,18 @@ static void sqfs_ll_op_lookup(fuse_req_t req, fuse_ino_t parent,
 		return;
 	}
 	if ((found & FOUND) == 0) {
-		fuse_reply_err(req, ENOENT);
+		/* Returning with zero inode indicates not found with
+		 * timeout, i.e. future lookups of this name will not generate
+		 * fuse requests.
+		 */
+		struct fuse_entry_param fentry;
+		memset(&fentry, 0, sizeof(fentry));
+		fentry.attr_timeout = fentry.entry_timeout = SQFS_TIMEOUT;
+		fentry.ino = 0;
+		fuse_reply_entry(req, &fentry);
 		return;
 	}
-	
+
 	if (sqfs_inode_get(&lli.ll->fs, &inode, sqfs_dentry_inode(&entry))) {
 		fuse_reply_err(req, ENOENT);
 	} else {
@@ -609,7 +617,30 @@ int main(int argc, char *argv[]) {
 		sqfs_usage(argv[0], true);
 	if (fuse_cmdline_opts.mountpoint == NULL)
 		sqfs_usage(argv[0], true);
-	
+
+	/* fuse_daemonize() will unconditionally clobber fds 0-2.
+	 *
+	 * If we get one of these file descriptors in sqfs_ll_open,
+	 * we're going to have a bad time. Just make sure that all
+	 * these fds are open before opening the image file, that way
+	 * we must get a different fd.
+	 */
+	while (true) {
+	    int fd = open("/dev/null", O_RDONLY);
+	    if (fd == -1) {
+		/* Can't open /dev/null, how bizarre! However,
+		 * fuse_deamonize won't clobber fds if it can't
+		 * open /dev/null either, so we ought to be OK.
+		 */
+		break;
+	    }
+	    if (fd > 2) {
+		/* fds 0-2 are now guaranteed to be open. */
+		close(fd);
+		break;
+	    }
+	}
+
 	/* OPEN FS */
 	err = !(ll = sqfs_ll_open(opts.images[0], opts.offset));
 	
