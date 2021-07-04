@@ -1,23 +1,19 @@
 env:
   CIRRUS_CLONE_DEPTH: 1
 
-task:
-  matrix:
-    - freebsd_instance:
-        image_family: freebsd-12-2
-      setup_script:
-        - pkg install -y autoconf automake libtool pkgconf fusefs-libs
-        - pkg install -y lzo2 liblz4 zstd
-        - pkg install -y squashfs-tools coreutils
-        - kldload fuse
-        - sysctl vfs.usermount=1
-      env:
-        CONFIGURE_CPPFLAGS: '-I/usr/local/include'
-        CONFIGURE_LDFLAGS: '-L/usr/local/lib' 
+freebsd_task:
+  freebsd_instance:
+    image_family: freebsd-12-2
+  setup_script:
+    - pkg install -y autoconf automake libtool pkgconf fusefs-libs
+    - pkg install -y lzo2 liblz4 zstd
+    - pkg install -y squashfs-tools coreutils
+    - kldload fuse
+    - sysctl vfs.usermount=1
   build_script:
     - ./autogen.sh
-    - CPPFLAGS="$CONFIGURE_CPPFLAGS -Werror" LDFLAGS="$CONFIGURE_LDFLAGS" ./configure
-    - make V=1
+    - CPPFLAGS="-I/usr/local/include -Werror" LDFLAGS="-L/usr/local/lib" ./configure
+    - make
   test_script:
     - make check
     - diff -u ci/expected-features/all ci/features
